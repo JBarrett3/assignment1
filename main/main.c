@@ -5,6 +5,7 @@
 #include "mpu6050.h"
 #include "esp_system.h"
 #include "esp_log.h"
+#include <unistd.h>
 
 #define I2C_MASTER_SCL_IO 19      /*!< gpio number for I2C master clock */
 #define I2C_MASTER_SDA_IO 18      /*!< gpio number for I2C master data  */
@@ -76,42 +77,60 @@ static void i2c_sensor_mpu6050_init(void)
 void app_main()
 {
     esp_err_t ret;
-    uint8_t mpu6050_deviceid;
     mpu6050_acce_value_t acce;
     mpu6050_gyro_value_t gyro;
-    mpu6050_temp_value_t temp;
 
     i2c_sensor_mpu6050_init();
 
-    ret = mpu6050_get_deviceid(mpu6050, &mpu6050_deviceid);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to get MPU6050 device ID");
+    char movements[4][5] = {"UP", "DOWN", "LEFT", "RIGHT"};
+    int trialLength = 15;
+    int LeadInDelay = 3;
+    for (int i = 0; i < 4; i++) {
+        ESP_LOGI(TAG, "Prepare to start movement %s in %d seconds", movements[i], LeadInDelay);
+        for (int j = LeadInDelay; j >= 0; j--) {
+            ESP_LOGI(TAG, "%d seconds...", j);
+            sleep(1);
+        }
+        
+        float data[trialLength][2][3]; //data[i] = [[accel_x, accel_y, accel_z], [gyro_x, gyro_y, gyro_z]] at time i,
+        for (int j = 0; j < trialLength; j++) {
+
+            ret = mpu6050_get_acce(mpu6050, &acce);
+            if (ret != ESP_OK)
+            {
+                ESP_LOGI(TAG, "Failed to get accelerometer data in movement %s at time %d", movements[i], j);
+            }
+
+            data[i][0][0] = acce.acce_x;
+            data[i][0][1] = acce.acce_y;
+            data[i][0][2] = acce.acce_z;
+            ESP_LOGI(TAG, "In movement %s at time %d, acce_x:%.2f, acce_y:%.2f, acce_z:%.2f\n", movements[i], j, acce.acce_x, acce.acce_y, acce.acce_z);
+
+            ret = mpu6050_get_gyro(mpu6050, &gyro);
+            if (ret != ESP_OK)
+            {
+                ESP_LOGI(TAG, "Failed to get gyroscope data in movement %s at time %d", movements[i], j);
+            }
+
+            data[i][1][0] = gyro.gyro_x;
+            data[i][1][1] = gyro.gyro_y;
+            data[i][1][2] = gyro.gyro_z;
+            ESP_LOGI(TAG, "In movement %s at time %d, gyro_x:%.2f, gyro_y:%.2f, gyro_z:%.2f\n", movements[i], j, gyro.gyro_x, gyro.gyro_y, gyro.gyro_z);
+
+            sleep(1);
+        }
+
+        ESP_LOGI(TAG, "Gyro Data for movement %s (x,y,z): ", movements[i]);
+        for (int j = 0; j < trialLength; j++) {
+            ESP_LOGI(TAG, "%.2f, %.2f, %.2f", data[j][0][0], data[j][0][1], data[j][0][2]);
+        }
+        
+        ESP_LOGI(TAG, "Accel Data for movement %s (x,y,z): ", movements[i]);
+        for (int j = 0; j < trialLength; j++) {
+            ESP_LOGI(TAG, "%.2f, %.2f, %.2f", data[j][1][0], data[j][1][1], data[j][1][2]);
+        }
     }
 
-    ret = mpu6050_get_acce(mpu6050, &acce);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to get accelerometer data");
-    }
-
-    ESP_LOGI(TAG, "acce_x:%.2f, acce_y:%.2f, acce_z:%.2f\n", acce.acce_x, acce.acce_y, acce.acce_z);
-
-    ret = mpu6050_get_gyro(mpu6050, &gyro);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to get gyroscope data");
-    }
-
-    ESP_LOGI(TAG, "gyro_x:%.2f, gyro_y:%.2f, gyro_z:%.2f\n", gyro.gyro_x, gyro.gyro_y, gyro.gyro_z);
-
-    ret = mpu6050_get_temp(mpu6050, &temp);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to get temperature data");
-    }
-
-    ESP_LOGI(TAG, "t:%.2f \n", temp.temp);
 
     mpu6050_delete(mpu6050);
     ret = i2c_driver_delete(I2C_MASTER_NUM);
